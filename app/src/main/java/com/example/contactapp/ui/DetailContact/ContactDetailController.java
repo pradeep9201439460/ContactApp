@@ -1,6 +1,7 @@
 package com.example.contactapp.controller;
 
 import android.Manifest;
+import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -21,6 +22,9 @@ import com.amulyakhare.textdrawable.util.ColorGenerator;
 import com.bluelinelabs.conductor.Controller;
 import com.bluelinelabs.conductor.RouterTransaction;
 import com.bluelinelabs.conductor.changehandler.FadeChangeHandler;
+import com.example.contactapp.DetailContactPresenter;
+import com.example.contactapp.DetailContactView;
+import com.example.contactapp.MainContactPresenter;
 import com.example.contactapp.bundleBuilder.BundleBuilder;
 import com.example.contactapp.R;
 import com.example.contactapp.database.DatabaseHandler;
@@ -32,14 +36,16 @@ import com.google.android.material.snackbar.Snackbar;
 import static com.example.contactapp.Constant.KEY_ID;
 import static com.example.contactapp.Constant.REQUEST_READ_CONTACTS;
 
-public class ContactDetailController extends Controller {
+public class ContactDetailController extends Controller implements DetailContactView {
     private static final String TAG = "ContactDetailController";
     private int contactId;
     String displayName;
     String phoneNumber;
     String emailId;
+    private Activity mActivity;
     private DatabaseHandler databaseHandler;
     private ControllerDetailContactBinding binding;
+    DetailContactPresenter presenter;
 
     public ContactDetailController(int contactId) {
         this(new BundleBuilder(new Bundle())
@@ -55,27 +61,61 @@ public class ContactDetailController extends Controller {
     @NonNull
     @Override
     protected View onCreateView(@NonNull LayoutInflater inflater, @NonNull ViewGroup container) {
-       // View view = inflater.inflate(R.layout.controller_detail_contact, container, false);
-        binding= DataBindingUtil.inflate(inflater,R.layout.controller_detail_contact, container, false);
-        databaseHandler = new DatabaseHandler(getActivity());
-
-
-        Contact contact= databaseHandler.getContact(contactId);;
-        displayName=contact.getDisplayName();
-        phoneNumber=contact.getPhoneNumber();
-        emailId=contact.getEmailId();
+        binding = DataBindingUtil.inflate(inflater, R.layout.controller_detail_contact, container, false);
+        mActivity=getActivity();
+        databaseHandler = new DatabaseHandler(mActivity);
+        presenter=new DetailContactPresenter(this,mActivity);
+        presenter.getSingleContact(contactId);
+       // Contact contact = databaseHandler.getContact(contactId);
+//        displayName = contact.getDisplayName();
+//        phoneNumber = contact.getPhoneNumber();
+//        emailId = contact.getEmailId();
         binding.imgContactDetailPicture.setImageDrawable(getDrawable());
         binding.tvContactDetailName.setText(displayName);
-        binding.imgShare.setOnClickListener(new View.OnClickListener() {
+        binding.tvContactDetailNumber.setText(phoneNumber);
+        init();
+        return binding.getRoot();
+    }
+
+    private void init() {
+        requestPermission();
+        shareContact();
+        getEmailId(emailId);
+        setCalling();
+        deleteContactToRoot();
+        updateContactTORoot();
+        binding.imgBackButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                shareContact();
+                getRouter().popToRoot();
             }
         });
-        binding.tvContactDetailNumber.setText(phoneNumber);
-        getEmailId(emailId);
+    }
 
-        requestPermission();
+    private void updateContactTORoot() {
+        binding.editFab.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                getRouter().pushController(RouterTransaction.with(
+                        new ContactUpdateController(contactId, displayName, phoneNumber, emailId))
+                        .pushChangeHandler(new FadeChangeHandler())
+                        .popChangeHandler(new FadeChangeHandler()));
+            }
+        });
+    }
+
+    private void deleteContactToRoot() {
+        binding.delete.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                databaseHandler.deleteContact(contactId);
+                getRouter().popToRoot();
+            }
+        });
+
+    }
+
+    private void setCalling() {
         binding.layoutCallButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -84,38 +124,10 @@ public class ContactDetailController extends Controller {
                 startActivity(callIntent);
             }
         });
-
-        binding.imgBackButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                getRouter().popToRoot();
-            }
-        });
-
-        binding.delete.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                databaseHandler.deleteContact(contactId);
-                getRouter().popToRoot();
-
-            }
-        });
-
-        binding.editFab.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                getRouter().pushController(RouterTransaction.with(
-                        new ContactUpdateController(contactId,displayName,phoneNumber,emailId))
-                        .pushChangeHandler(new FadeChangeHandler())
-                        .popChangeHandler(new FadeChangeHandler()));
-            }
-        });
-
-        return binding.getRoot();
     }
 
-   private void getEmailId(String emailId) {
-        Log.d(TAG, "getEmailId: "+emailId);
+    private void getEmailId(String emailId) {
+        Log.d(TAG, "getEmailId: " + emailId);
         if (emailId != null && !emailId.equals("")) {
             binding.emailLayout.setVisibility(View.VISIBLE);
             binding.contactDetailEmail.setText(emailId);
@@ -159,18 +171,29 @@ public class ContactDetailController extends Controller {
     }
 
     private void shareContact() {
-        Cursor cur = getApplicationContext().getContentResolver().
-                query(ContactsContract.Contacts.CONTENT_URI,
-                        new String[]{ContactsContract.Contacts.LOOKUP_KEY},
-                        ContactsContract.Contacts._ID, null, null);
-        if (cur.moveToFirst()) {
-            String lookupKey = cur.getString(0);
-            Uri uri = Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_VCARD_URI, lookupKey);
-            Intent intent = new Intent(Intent.ACTION_SEND);
-            intent.setType(ContactsContract.Contacts.CONTENT_VCARD_TYPE);
-            intent.putExtra(Intent.EXTRA_STREAM, uri);
-            intent.putExtra(Intent.EXTRA_SUBJECT, displayName); // put the name of the contact here
-            startActivity(intent);
-        }
+        binding.imgShare.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Cursor cur = getApplicationContext().getContentResolver().
+                        query(ContactsContract.Contacts.CONTENT_URI,
+                                new String[]{ContactsContract.Contacts.LOOKUP_KEY},
+                                ContactsContract.Contacts._ID, null, null);
+                if (cur.moveToFirst()) {
+                    String lookupKey = cur.getString(0);
+                    Uri uri = Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_VCARD_URI, lookupKey);
+                    Intent intent = new Intent(Intent.ACTION_SEND);
+                    intent.setType(ContactsContract.Contacts.CONTENT_VCARD_TYPE);
+                    intent.putExtra(Intent.EXTRA_STREAM, uri);
+                    intent.putExtra(Intent.EXTRA_SUBJECT, displayName);
+                    startActivity(intent);
+                }
+            }
+        });
+    }
+    @Override
+    public void setSingleContact(Contact contact) {
+        displayName = contact.getDisplayName();
+        phoneNumber = contact.getPhoneNumber();
+        emailId = contact.getEmailId();
     }
 }

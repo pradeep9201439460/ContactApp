@@ -20,32 +20,34 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import com.bluelinelabs.conductor.Controller;
 import com.bluelinelabs.conductor.RouterTransaction;
 import com.bluelinelabs.conductor.changehandler.FadeChangeHandler;
+import com.example.contactapp.MainContactPresenter;
+import com.example.contactapp.MainContactView;
 import com.example.contactapp.R;
 import com.example.contactapp.adapter.ContactsAdapter;
 import com.example.contactapp.database.DatabaseHandler;
 import com.example.contactapp.databinding.ControllerAllContactBinding;
 import com.example.contactapp.model.Contact;
-import com.jakewharton.rxbinding2.view.RxView;
-
 import java.util.List;
 
 import io.reactivex.disposables.CompositeDisposable;
 
 import static com.example.contactapp.Constant.MY_PERMISSIONS_REQUEST_READ_CONTACTS;
 
-public class MainContactController extends Controller{
+public class MainContactController extends Controller implements MainContactView {
     private static final String TAG = "MainContactController";
     private String name, number, email;
     private DatabaseHandler databaseHandler;
     private Activity mActivity;
     private ControllerAllContactBinding binding;
     CompositeDisposable lifecycle;
+    MainContactPresenter presenter;
 
     @NonNull
     @Override
     protected View onCreateView(@NonNull LayoutInflater inflater, @NonNull ViewGroup container) {
         binding = DataBindingUtil.inflate(inflater, R.layout.controller_all_contact, container, false);
         mActivity = getActivity();
+        presenter=new MainContactPresenter(this,mActivity);
         lifecycle = new CompositeDisposable();
         databaseHandler = new DatabaseHandler(mActivity);
         Log.d(TAG, "----------------onCreateView: ---------------------------------");
@@ -72,7 +74,8 @@ public class MainContactController extends Controller{
             requestPermissions(new String[]{Manifest.permission.READ_CONTACTS},
                     MY_PERMISSIONS_REQUEST_READ_CONTACTS);
         } else {
-            getContact();
+            presenter.getContactList();
+
         }
     }
 
@@ -83,30 +86,11 @@ public class MainContactController extends Controller{
             if (permissions[0].equals(Manifest.permission.READ_CONTACTS)) {
                 if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     getAllContacts();
-                    getContact();
+                    presenter.getContactList();
                 }
             }
         }
     }
-
-    private void getContact() {
-        final List<Contact> contactList = databaseHandler.getAllContacts();
-        Log.d(TAG, "onCreateView: " + contactList.size());
-        ContactsAdapter contactsAdapter = new ContactsAdapter(getActivity(), contactList);
-        binding.rvContacts.setLayoutManager(new LinearLayoutManager(getActivity()));
-        binding.rvContacts.setAdapter(contactsAdapter);
-        contactsAdapter.notifyDataSetChanged();
-        contactsAdapter.setOnItemClickListener(new ContactsAdapter.ClickListener() {
-            @Override
-            public void onClick(View view, int position) {
-                getRouter().pushController(RouterTransaction
-                        .with(new ContactDetailController(contactList.get(position).getContactId()))
-                        .pushChangeHandler(new FadeChangeHandler())
-                        .popChangeHandler(new FadeChangeHandler()));
-            }
-        });
-    }
-
     private static final String[] PROJECTION = new String[]{
             ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
             ContactsContract.Contacts.DISPLAY_NAME,
@@ -156,5 +140,32 @@ public class MainContactController extends Controller{
             cur.close();
         }
         return email;
+    }
+
+    @Override
+    public void showLoading() {
+
+    }
+
+    @Override
+    public void hideLoading() {
+
+    }
+
+    @Override
+    public void setContact(final List<Contact> contactList) {
+        ContactsAdapter contactsAdapter = new ContactsAdapter(getActivity(), contactList);
+        binding.rvContacts.setLayoutManager(new LinearLayoutManager(getActivity()));
+        binding.rvContacts.setAdapter(contactsAdapter);
+        contactsAdapter.notifyDataSetChanged();
+        contactsAdapter.setOnItemClickListener(new ContactsAdapter.ClickListener() {
+            @Override
+            public void onClick(View view, int position) {
+                getRouter().pushController(RouterTransaction
+                        .with(new ContactDetailController(contactList.get(position).getContactId()))
+                        .pushChangeHandler(new FadeChangeHandler())
+                        .popChangeHandler(new FadeChangeHandler()));
+            }
+        });
     }
 }
